@@ -1,0 +1,8 @@
+.env
+__pycache__/
+*.pyc
+debug_urls.txt
+debug_api_payloads.json
+debug_pdp_payload.json
+*.log
+.claude/

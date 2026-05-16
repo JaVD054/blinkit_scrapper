@@ -1,0 +1,5 @@
+requests==2.32.3
+rich==13.7.1
+beautifulsoup4==4.12.3
+playwright>=1.44.0
+python-dotenv>=1.0.0
