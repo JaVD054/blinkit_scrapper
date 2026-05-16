@@ -255,8 +255,15 @@ class BlinkitPlaywrightClient:
         self._force_location(page)
         page.on("response", _on_resp)
         try:
-            page.goto(url, wait_until="domcontentloaded", timeout=30_000)
-            page.wait_for_timeout(5_000)
+            page.goto(url, wait_until="domcontentloaded", timeout=60_000)
+            # Wait for the product API call — give extra time on slow cloud networks
+            try:
+                page.wait_for_response(
+                    lambda r: "v1/layout/product" in r.url and r.status == 200,
+                    timeout=20_000,
+                )
+            except Exception:
+                pass  # fall through with whatever was captured so far
         except Exception:
             pass
         finally:
