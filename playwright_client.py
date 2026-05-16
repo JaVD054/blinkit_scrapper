@@ -8,10 +8,8 @@ Strategy:
   4. For search: intercept v1/layout/search and fall back to DOM scraping if needed.
 """
 
-import glob
 import json
 import logging
-import os
 import re
 import urllib.parse
 from typing import Optional
@@ -183,12 +181,8 @@ class BlinkitPlaywrightClient:
     # ------------------------------------------------------------------
 
     def _launch_browser(self, pw) -> Browser:
-        candidates = glob.glob(
-            os.path.expanduser("~/.cache/ms-playwright/chromium-*/chrome-linux64/chrome")
-        )
         return pw.chromium.launch(
             headless=self.headless,
-            executable_path=candidates[0] if candidates else None,
             args=["--no-sandbox", "--disable-setuid-sandbox",
                   "--disable-blink-features=AutomationControlled"],
         )
