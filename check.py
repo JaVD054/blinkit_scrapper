@@ -65,6 +65,8 @@ def main() -> None:
     client = BlinkitPlaywrightClient(lat, lon, headless=True)
     results = client.fetch_all(urls)
 
+    console.print(f"Store: [bold]{client.store_name or 'unknown'}[/bold]")
+
     found_any = False
     for url, product in results:
         if product is None:
