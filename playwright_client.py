@@ -12,7 +12,6 @@ import json
 import logging
 import re
 import urllib.parse
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional
 
 from playwright.sync_api import sync_playwright, Page, Response, BrowserContext, Browser
@@ -112,32 +111,27 @@ class BlinkitPlaywrightClient:
         self,
         urls: list[str],
         on_result=None,
-        workers: int = 3,
     ) -> list[tuple[str, Optional[Product]]]:
         """
-        Check availability for multiple product URLs in parallel.
+        Check availability for multiple product URLs in a single browser session.
         Returns [(url, Product | None), ...] in the same order as `urls`.
 
         on_result(done: int, total: int, url: str, product: Optional[Product])
         is called after each URL is fetched so callers can show live progress.
         """
+        results: list[tuple[str, Optional[Product]]] = []
         total = len(urls)
-        results: list[tuple[str, Optional[Product]] | None] = [None] * total
-        done_count = 0
-
-        def _task(i: int, url: str):
-            return i, url, self._fetch_isolated(url)
-
-        with ThreadPoolExecutor(max_workers=min(workers, total)) as pool:
-            futures = {pool.submit(_task, i, url): i for i, url in enumerate(urls)}
-            for future in as_completed(futures):
-                i, url, product = future.result()
-                results[i] = (url, product)
-                done_count += 1
+        with sync_playwright() as pw:
+            browser = self._launch_browser(pw)
+            context = self._new_context(browser)
+            self._inject_location_cookies(context)
+            for i, url in enumerate(urls):
+                product = self._fetch_one(context, url)
+                results.append((url, product))
                 if on_result:
-                    on_result(done_count, total, url, product)
-
-        return results  # type: ignore[return-value]
+                    on_result(i + 1, total, url, product)
+            browser.close()
+        return results
 
     def fetch_product_by_url(self, url: str) -> Optional[Product]:
         """Single-product convenience wrapper around fetch_all."""
@@ -186,16 +180,6 @@ class BlinkitPlaywrightClient:
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
-
-    def _fetch_isolated(self, url: str) -> Optional[Product]:
-        """Run a single product fetch in its own Playwright session (thread-safe)."""
-        with sync_playwright() as pw:
-            browser = self._launch_browser(pw)
-            context = self._new_context(browser)
-            self._inject_location_cookies(context)
-            product = self._fetch_one(context, url)
-            browser.close()
-        return product
 
     def _launch_browser(self, pw) -> Browser:
         return pw.chromium.launch(
@@ -281,8 +265,13 @@ class BlinkitPlaywrightClient:
         product = None
         try:
             page.goto(url, wait_until="domcontentloaded", timeout=60_000)
-            # Wait for API calls; location/info fires a few seconds after the product API
-            page.wait_for_timeout(12_000 if not self.store_name else 8_000)
+            # Poll every 500 ms; exit early once the product API fires (max 20 s).
+            # location/info arrives a few seconds after the product API.
+            need_store = not self.store_name
+            for _ in range(40):
+                if captured and (not need_store or loc_captured):
+                    break
+                page.wait_for_timeout(500)
 
             # Read bodies while page is still alive — before finally: page.close()
             if captured:
