@@ -39,6 +39,7 @@ _PIN_FALLBACK: dict[str, tuple[float, float]] = {
     "110070": (28.5188, 77.1548),
     "400001": (18.9387, 72.8353),
     "560001": (12.9716, 77.5946),
+    "560016": (12.993042, 77.668716),
     "600001": (13.0827, 80.2707),
     "700001": (22.5726, 88.3639),
 }
@@ -108,7 +109,8 @@ def notify(product: Product, url: str, tg_token: Optional[str], tg_chat: Optiona
     print("\a", end="", flush=True)
     _notify_desktop(product)
     if tg_token and tg_chat:
-        _notify_telegram(tg_token, tg_chat, product, url)
+        # _notify_telegram(tg_token, tg_chat, product, url)
+        pass
 
 
 # ---------------------------------------------------------------------------

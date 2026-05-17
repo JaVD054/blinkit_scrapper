@@ -97,7 +97,7 @@ def _parse_pdp(data: dict) -> Optional[Product]:
 
 
 class BlinkitPlaywrightClient:
-    def __init__(self, lat: float, lon: float, headless: bool = False) -> None:
+    def __init__(self, lat: float = 12.993042, lon: float = 77.668716, headless: bool = False) -> None:
         self.lat = lat
         self.lon = lon
         self.headless = headless
