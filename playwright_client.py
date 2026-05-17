@@ -265,39 +265,45 @@ class BlinkitPlaywrightClient:
         page.add_init_script(_ANTI_BOT_SCRIPT)
         self._force_location(page)
 
-        # Capture location/info response reference only — body read after product resolves
-        _loc_resp: list[Response] = []
-        def _on_loc(r: Response) -> None:
-            if "location/info" in r.url and r.status == 200 and not _loc_resp:
-                _loc_resp.append(r)
+        # Store response references only — body is read after wait_for_timeout,
+        # while the page is still alive (avoids calling Playwright APIs inside handlers).
+        captured: list[Response] = []
+        loc_captured: list[Response] = []
 
-        if not self.store_name:
-            page.on("response", _on_loc)
+        def _on_resp(r: Response) -> None:
+            if "v1/layout/product" in r.url and r.status == 200 and not captured:
+                captured.append(r)
+            if not self.store_name and "location/info" in r.url and r.status == 200 and not loc_captured:
+                loc_captured.append(r)
+
+        page.on("response", _on_resp)
 
         product = None
         try:
-            with page.expect_response(
-                lambda r: "v1/layout/product" in r.url and r.status == 200,
-                timeout=60_000,
-            ) as resp_info:
-                page.goto(url, wait_until="domcontentloaded", timeout=60_000)
+            page.goto(url, wait_until="domcontentloaded", timeout=60_000)
+            # Wait for API calls; location/info fires a few seconds after the product API
+            page.wait_for_timeout(12_000 if not self.store_name else 8_000)
 
-            # location/info fires a few seconds after the product API — wait for it
-            if not self.store_name:
-                page.wait_for_timeout(3_000)
-                if _loc_resp:
-                    try:
-                        loc_data = _loc_resp[0].json()
-                        polygons = loc_data.get("poi_data", {}).get("polygons", [])
-                        if polygons:
-                            name = polygons[0].get("name", "")
-                            area = polygons[0].get("heuristics", "")
-                            self.store_name = f"{name} — {area}" if area else name
-                    except Exception:
-                        pass
+            # Read bodies while page is still alive — before finally: page.close()
+            if captured:
+                try:
+                    data = captured[0].json()
+                    product = _parse_pdp(data)
+                except Exception as exc:
+                    logger.warning("body read failed for %s: %s", url, exc)
+            else:
+                logger.warning("_fetch_one: no API response for %s", url)
 
-            data = resp_info.value.json()
-            product = _parse_pdp(data)
+            if not self.store_name and loc_captured:
+                try:
+                    loc_data = loc_captured[0].json()
+                    polygons = loc_data.get("poi_data", {}).get("polygons", [])
+                    if polygons:
+                        name = polygons[0].get("name", "")
+                        area = polygons[0].get("heuristics", "")
+                        self.store_name = f"{name} — {area}" if area else name
+                except Exception:
+                    pass
         except Exception as exc:
             logger.warning("_fetch_one failed for %s: %s", url, exc)
         finally:
