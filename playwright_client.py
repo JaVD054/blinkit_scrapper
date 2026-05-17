@@ -273,6 +273,8 @@ class BlinkitPlaywrightClient:
             product = _parse_pdp(payload)
             if product:
                 return product
+
+        logger.warning("_fetch_one got no usable response for %s (captured=%d)", url, len(captured))
         return None
 
     def _on_search_response(self, response: Response, captured: list, all_urls: list) -> None:
