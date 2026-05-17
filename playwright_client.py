@@ -97,7 +97,7 @@ def _parse_pdp(data: dict) -> Optional[Product]:
 
 
 class BlinkitPlaywrightClient:
-    def __init__(self, lat: float, lon: float, headless: bool = True) -> None:
+    def __init__(self, lat: float, lon: float, headless: bool = False) -> None:
         self.lat = lat
         self.lon = lon
         self.headless = headless
@@ -246,6 +246,7 @@ class BlinkitPlaywrightClient:
         """Navigate to a product page in an existing context and return the Product."""
         page = context.new_page()
         page.add_init_script(_ANTI_BOT_SCRIPT)
+        self._force_location(page)
         product = None
         try:
             with page.expect_response(
