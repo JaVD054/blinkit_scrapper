@@ -211,25 +211,32 @@ class BlinkitPlaywrightClient:
         _lat, _lon = str(self.lat), str(self.lon)
 
         def _rewrite(route) -> None:
-            url = route.request.url
-            parsed = urllib.parse.urlparse(url)
-            params = urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
-            changed = False
-            for lat_key in ("latitude", "lat"):
-                if lat_key in params:
-                    params[lat_key] = [_lat]
-                    changed = True
-            for lon_key in ("longitude", "lon"):
-                if lon_key in params:
-                    params[lon_key] = [_lon]
-                    changed = True
-            if changed:
-                new_query = urllib.parse.urlencode(params, doseq=True)
-                new_url = parsed._replace(query=new_query).geturl()
-                logger.debug("_force_location rewrote %s → %s", url, new_url)
-                route.continue_(url=new_url)
-            else:
-                route.continue_()
+            try:
+                url = route.request.url
+                parsed = urllib.parse.urlparse(url)
+                params = urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
+                changed = False
+                for lat_key in ("latitude", "lat"):
+                    if lat_key in params:
+                        params[lat_key] = [_lat]
+                        changed = True
+                for lon_key in ("longitude", "lon"):
+                    if lon_key in params:
+                        params[lon_key] = [_lon]
+                        changed = True
+                if changed:
+                    new_query = urllib.parse.urlencode(params, doseq=True)
+                    new_url = parsed._replace(query=new_query).geturl()
+                    logger.debug("_force_location rewrote %s → %s", url, new_url)
+                    route.continue_(url=new_url)
+                else:
+                    route.continue_()
+            except Exception as exc:
+                logger.debug("_force_location _rewrite error: %s", exc)
+                try:
+                    route.continue_()
+                except Exception:
+                    pass
 
         page.route("**/visibility*", _rewrite)
         page.route("**/location/info*", _rewrite)
@@ -237,45 +244,23 @@ class BlinkitPlaywrightClient:
 
     def _fetch_one(self, context: BrowserContext, url: str) -> Optional[Product]:
         """Navigate to a product page in an existing context and return the Product."""
-        captured: list[dict] = []
-
-        def _on_resp(r: Response) -> None:
-            if r.status != 200:
-                return
-            if "json" not in r.headers.get("content-type", ""):
-                return
-            if "v1/layout/product" in r.url:
-                try:
-                    captured.append(r.json())
-                except Exception:
-                    pass
-
         page = context.new_page()
         page.add_init_script(_ANTI_BOT_SCRIPT)
-        self._force_location(page)
-        page.on("response", _on_resp)
+        product = None
         try:
-            page.goto(url, wait_until="domcontentloaded", timeout=60_000)
-            # Wait for the product API call — give extra time on slow cloud networks
-            try:
-                page.wait_for_response(
-                    lambda r: "v1/layout/product" in r.url and r.status == 200,
-                    timeout=20_000,
-                )
-            except Exception:
-                pass  # fall through with whatever was captured so far
-        except Exception:
-            pass
+            with page.expect_response(
+                lambda r: "v1/layout/product" in r.url and r.status == 200,
+                timeout=30_000,
+            ) as resp_info:
+                page.goto(url, wait_until="domcontentloaded", timeout=30_000)
+            # Read body while page is still alive — before finally: page.close()
+            data = resp_info.value.json()
+            product = _parse_pdp(data)
+        except Exception as exc:
+            logger.warning("_fetch_one failed for %s: %s", url, exc)
         finally:
             page.close()
-
-        for payload in captured:
-            product = _parse_pdp(payload)
-            if product:
-                return product
-
-        logger.warning("_fetch_one got no usable response for %s (captured=%d)", url, len(captured))
-        return None
+        return product
 
     def _on_search_response(self, response: Response, captured: list, all_urls: list) -> None:
         url = response.url
