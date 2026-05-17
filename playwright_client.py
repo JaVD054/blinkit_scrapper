@@ -262,9 +262,9 @@ class BlinkitPlaywrightClient:
         try:
             with page.expect_response(
                 lambda r: "v1/layout/product" in r.url and r.status == 200,
-                timeout=30_000,
+                timeout=60_000,
             ) as resp_info:
-                page.goto(url, wait_until="domcontentloaded", timeout=30_000)
+                page.goto(url, wait_until="domcontentloaded", timeout=60_000)
 
             # location/info fires a few seconds after the product API — wait for it
             if not self.store_name:
