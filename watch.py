@@ -109,7 +109,7 @@ def notify(product: Product, url: str, tg_token: Optional[str], tg_chat: Optiona
     print("\a", end="", flush=True)
     _notify_desktop(product)
     if tg_token and tg_chat:
-        # _notify_telegram(tg_token, tg_chat, product, url)
+        _notify_telegram(tg_token, tg_chat, product, url)
         pass
 
 
